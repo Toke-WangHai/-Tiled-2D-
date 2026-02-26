@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技能演示方案制作工具</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei",sans-serif;}
+        body{padding:20px;background:#f5f5f5;}
+        .container{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}
+        .demo-window{width:100%;height:600px;background:#2c3e50;border-radius:8px;position:relative;overflow:hidden;}
+        .capsule{width:50px;height:100px;border-radius:25px;position:absolute;transition:all 0.2s linear;z-index:10;cursor:grab;user-select:none;}
+        .capsule.selected{box-shadow:0 0 0 3px rgba(72,187,120,0.85);border-radius:22px;}
+        .capsule:active{cursor:grabbing;}
+        .player{background:#3498db;left:200px;top:250px;}
+        .monster{background:#e74c3c;right:200px;top:250px;}
+        .hp-bar{position:absolute;left:50%;transform:translateX(-50%);top:-14px;width:60px;height:8px;background:#444;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,0.5);}
+        .hp-fill{height:100%;background:linear-gradient(90deg,#2ecc71,#27ae60);width:100%;}
+        .name-label{position:absolute;left:50%;transform:translateX(-50%);top:-28px;color:#fff;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,0.6);}
+        .warning-shape{position:absolute;border:2px dashed rgba(255,200,0,0.9);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:5;opacity:0.95;}
+        .cone-shape{position:absolute;pointer-events:none;z-index:5;opacity:0.9;}
+        .damage-text{position:absolute;color:#ffcc00;font-size:16px;font-weight:700;pointer-events:none;animation:floatUp 1s ease-out forwards;text-shadow:0 1px 2px rgba(0,0,0,0.6);}
+        @keyframes floatUp{0%{opacity:1;transform:translateY(0);}100%{opacity:0;transform:translateY(-30px);}}
+        .control-panel{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+        .control-panel .col{background:#fff;padding:10px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.08);}
+        textarea{width:420px;padding:8px;border:1px solid #ddd;border-radius:4px;resize:none;font-size:14px;}
+        #executeBtn,#resetBtn{padding:8px 16px;border:0;border-radius:4px;background:#27ae60;color:#fff;cursor:pointer;}
+        #resetBtn{background:#e74c3c;}
+        label{display:block;font-size:12px;color:#333;margin-bottom:4px;}
+        input[type="number"],select,input[type="text"]{padding:6px;border:1px solid #ddd;border-radius:4px;width:100%;}
+        .small{width:120px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="demo-window" id="demoWindow" tabindex="0"></div>
+
+        <div class="control-panel">
+            <div class="col">
+                <label>技能类型（可选）</label>
+                <select id="skillType">
+                    <option value="auto">自动解析</option>
+                    <option value="buff">Buff（周期1s判定）</option>
+                    <option value="status">状态（眩晕/沉默/禁锢）</option>
+                    <option value="target">点名</option>
+                    <option value="cone">扇形（30/60/120°）</option>
+                    <option value="area">范围</option>
+                    <option value="displace">位移（击退/冲锋/跳越）</option>
+                </select>
+
+                <label>扇形角度（仅扇形时）</label>
+                <select id="coneAngle"><option>30</option><option>60</option><option selected>120</option></select>
+
+                <label>技能释放目标（选择：Auto/Player/MonsterN）</label>
+                <select id="releaseTargetSelect"></select>
+                <label>受击目标（选择：Auto/Player/MonsterN/All）</label>
+                <select id="hitTargetSelect"></select>
+
+                <label>目标数量（怪物数量）</label>
+                <input id="monsterCount" type="number" min="1" max="8" value="1" class="small">
+                <label>玩家攻击</label><input id="playerAtk" type="number" value="100" class="small">
+                <label>玩家生命</label><input id="playerHP" type="number" value="1000" class="small">
+                <label>怪物攻击</label><input id="monsterAtk" type="number" value="30" class="small">
+                <label>怪物生命</label><input id="monsterHP" type="number" value="500" class="small">
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <button id="executeBtn">执行演示</button>
+                    <button id="resetBtn">重置场景</button>
+                </div>
+            </div>
+
+            <div class="col">
+                <label>技能描述（仅做描述；可填写多个）</label>
+                <textarea id="skillDesc1" placeholder="技能1 描述"></textarea>
+                <textarea id="skillDesc2" placeholder="技能2 描述（可留空）" style="margin-top:6px;"></textarea>
+                <textarea id="skillDesc3" placeholder="技能3 描述（可留空）" style="margin-top:6px;"></textarea>
+                <div style="margin-top:8px;font-size:12px;color:#666;">
+                    支持关键字：跳跃/回到原地、击退、冲锋、跳越、中毒、烧伤、流血、眩晕、沉默、禁锢、范围Xm、X点伤害、X%攻击、扇形30/60/120
+                </div>
+                <label style="margin-top:6px;"><input type="checkbox" id="execMultiple"> 执行多个技能效果（依次）</label>
+                <label style="margin-top:6px;">多个效果间隔（输入整数，单位为万分之一秒；例如 10000 = 1s，5000 = 0.5s）</label>
+                <input id="multipleInterval" type="number" value="10000" class="small">
+                <label style="margin-top:6px;"><input type="checkbox" id="jumpBackCheckbox"> 位移后返回原点</label>
+            </div>
+
+            <div class="col" style="min-width:260px;">
+                <label>实时日志</label>
+                <div id="log" style="width:240px;height:220px;overflow:auto;background:#fafafa;padding:8px;border-radius:4px;border:1px solid #eee;font-size:12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM
+        const demoWindow = document.getElementById('demoWindow');
+        const executeBtn = document.getElementById('executeBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const skillTypeSelect = document.getElementById('skillType');
+        const coneAngleSelect = document.getElementById('coneAngle');
+        const monsterCountInput = document.getElementById('monsterCount');
+        const playerAtkInput = document.getElementById('playerAtk');
+        const playerHPInput = document.getElementById('playerHP');
+        const monsterAtkInput = document.getElementById('monsterAtk');
+        const monsterHPInput = document.getElementById('monsterHP');
+        const logEl = document.getElementById('log');
+
+        // new DOM
+        const releaseTargetSelect = document.getElementById('releaseTargetSelect');
+        const hitTargetSelect = document.getElementById('hitTargetSelect');
+        const skillDesc1 = document.getElementById('skillDesc1');
+        const skillDesc2 = document.getElementById('skillDesc2');
+        const skillDesc3 = document.getElementById('skillDesc3');
+        const execMultipleCheckbox = document.getElementById('execMultiple');
+        const multipleIntervalInput = document.getElementById('multipleInterval');
+        const jumpBackCheckbox = document.getElementById('jumpBackCheckbox');
+
+        // 基础配置
+        const METER_PX = 50; // 1m = 50px
+        let player = null;
+        let monsters = []; // {el, hp, maxHp, atk, left, top, id, status:{stun,...}, buffs:[]}
+        let initState = null;
+        let timeoutIds = [];
+        let intervalIds = [];
+
+        // 工具
+        function log(s){ const d=document.createElement('div'); d.textContent=s; logEl.prepend(d); }
+        function km(x){ return Math.round(x*100)/100; }
+        function clearAllTimers(){ timeoutIds.forEach(clearTimeout); intervalIds.forEach(clearInterval); timeoutIds=[]; intervalIds=[]; }
+        function stopAllEffects(){ document.querySelectorAll('.warning-shape,.cone-shape').forEach(e=>e.remove()); }
+
+        // 创建单位DOM
+        function createCapsule(type, opts){
+            const el = document.createElement('div');
+            el.className = 'capsule '+type;
+            el.style.left = (opts.left||100)+'px';
+            el.style.top = (opts.top||100)+'px';
+            el.dataset.id = opts.id;
+            // 名字
+            const name = document.createElement('div'); name.className='name-label'; name.textContent=opts.name||type; el.appendChild(name);
+            // hp
+            const hpBar = document.createElement('div'); hpBar.className='hp-bar';
+            const fill = document.createElement('div'); fill.className='hp-fill';
+            hpBar.appendChild(fill); el.appendChild(hpBar);
+            // enable drag
+            enableDrag(el, opts.id);
+            demoWindow.appendChild(el);
+            return {el, hpFill: fill, nameEl: name};
+        }
+
+        // 拖拽
+        let dragging = null;
+        function enableDrag(el, id){
+            el.addEventListener('pointerdown', e=>{
+                if (e.pointerType === 'mouse' && e.button !== 0) return; // only left mouse
+                document.querySelectorAll('.capsule.selected').forEach(x=>x.classList.remove('selected'));
+                el.classList.add('selected');
+                dragging = {el, startX:e.clientX, startY:e.clientY, origLeft:el.offsetLeft, origTop:el.offsetTop, id};
+                try{ el.setPointerCapture && el.setPointerCapture(e.pointerId); }catch{}
+            });
+            window.addEventListener('pointermove', e=>{
+                if (!dragging) return;
+                if (el !== dragging.el) return;
+                const dx = e.clientX - dragging.startX;
+                const dy = e.clientY - dragging.startY;
+                let nx = Math.max(0, Math.min(demoWindow.clientWidth - el.offsetWidth, dragging.origLeft + dx));
+                let ny = Math.max(0, Math.min(demoWindow.clientHeight - el.offsetHeight, dragging.origTop + dy));
+                el.style.left = nx+'px'; el.style.top = ny+'px';
+                const id = dragging.id;
+                if (id === 'player') { player.left = nx; player.top = ny; }
+                else {
+                    const m = monsters.find(x=>x.id===id);
+                    if (m){ m.left = nx; m.top = ny; }
+                }
+            });
+            window.addEventListener('pointerup', e=>{
+                if (!dragging) return;
+                if (el === dragging.el){
+                    try{ el.releasePointerCapture && el.releasePointerCapture(e.pointerId); }catch{}
+                    dragging = null;
+                }
+            });
+        }
+
+        // 刷新目标下拉（Player / Monster1..N / Auto / All）
+        function refreshTargetSelectors(){
+            const opts = [{v:'auto',t:'Auto'}, {v:'player',t:'Player'}];
+            monsters.forEach((m,i)=> opts.push({v:`m${i}`, t:`Monster${i+1}`}));
+            const hitOpts = [{v:'auto',t:'Auto'}, {v:'all',t:'All'}, {v:'player',t:'Player'}];
+            monsters.forEach((m,i)=> hitOpts.push({v:`m${i}`, t:`Monster${i+1}`}));
+            releaseTargetSelect.innerHTML = '';
+            opts.forEach(o=> { const opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.t; releaseTargetSelect.appendChild(opt); });
+            hitTargetSelect.innerHTML = '';
+            hitOpts.forEach(o=> { const opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.t; hitTargetSelect.appendChild(opt); });
+        }
+
+        // 初始化场景
+        function initScene(){
+            clearAllTimers(); stopAllEffects();
+            demoWindow.innerHTML='';
+            monsters = [];
+            player = {id:'player', atk: Number(playerAtkInput.value), hp: Number(playerHPInput.value), maxHp: Number(playerHPInput.value), left:200, top:250, status:{}, buffs:[]};
+            const pdom = createCapsule('player',{id:'player',left:player.left,top:player.top,name:'Player'});
+            player.el = pdom.el; player.hpFill = pdom.hpFill; player.nameEl = pdom.nameEl;
+            // create monsters
+            const cnt = Math.max(1, Math.min(8, Number(monsterCountInput.value)));
+            for (let i=0;i<cnt;i++){
+                const left = 400 + (i*80);
+                const top = 200 + ((i%2)*80);
+                const id = 'm'+i;
+                const m = {id, atk: Number(monsterAtkInput.value), hp: Number(monsterHPInput.value), maxHp: Number(monsterHPInput.value), left, top, status:{}, buffs:[]};
+                const dom = createCapsule('monster',{id,left,top,name:'Monster'+(i+1)});
+                m.el = dom.el; m.hpFill = dom.hpFill; m.nameEl = dom.nameEl;
+                monsters.push(m);
+            }
+            // record initial
+            initState = {player: {...player}, monsters: monsters.map(m=>({...m}))};
+            updateAllHPDisplays();
+            refreshTargetSelectors();
+            log('场景已初始化');
+        }
+
+        function updateAllHPDisplays(){
+            if (player && player.hpFill) player.hpFill.style.width = (player.hp/player.maxHp*100)+'%';
+            monsters.forEach(m => { if (m.hpFill) m.hpFill.style.width = (m.hp/m.maxHp*100)+'%'; });
+        }
+
+        // 飘字（修复位置，基于getBoundingClientRect）
+        function createDamageText(targetEl, damage, color='#ffcc00'){
+            const rect = demoWindow.getBoundingClientRect();
+            const tr = targetEl.getBoundingClientRect();
+            const dt = document.createElement('div');
+            dt.className='damage-text';
+            dt.style.left = (tr.left - rect.left + tr.width/2 + 10) + 'px';
+            dt.style.top = (tr.top - rect.top - 10) + 'px';
+            dt.style.color = color;
+            dt.textContent = (damage>0?'-':'') + Math.abs(Math.floor(damage));
+            demoWindow.appendChild(dt);
+            timeoutIds.push(setTimeout(()=>dt.remove(),1000));
+        }
+
+        // 应用伤害到目标实体
+        function applyDamageToEntity(entity, dmg){
+            if (!entity) return;
+            entity.hp = Math.max(0, entity.hp - Math.floor(dmg));
+            updateAllHPDisplays();
+            createDamageText(entity.el, dmg, '#ffcc00');
+            log(`${entity.id} 受到了 ${Math.floor(dmg)} 伤害，HP=${entity.hp}/${entity.maxHp}`);
+            if (entity.hp<=0) {
+                entity.el.style.opacity = 0.35;
+                entity.nameEl.textContent += ' (倒下)';
+            }
+        }
+
+        // Buff 系统：每秒判定（烧伤/中毒/流血）
+        function applyPeriodicBuff(entity, buff){
+            const tickInterval = 1000;
+            let elapsed = 0;
+            const iid = setInterval(()=>{
+                if (elapsed>=buff.duration*1000 || entity.hp<=0){ clearInterval(iid); return; }
+                applyDamageToEntity(entity, buff.dps);
+                elapsed += tickInterval;
+            }, tickInterval);
+            intervalIds.push(iid);
+            entity.buffs.push({buff, iid});
+        }
+
+        // 状态技能应用（眩晕/沉默/禁锢）
+        function applyStatus(entity, statusName, sec){
+            entity.status[statusName]=true;
+            log(`${entity.id} 进入状态：${statusName} ${sec}s`);
+            const mark = document.createElement('div'); mark.className='name-label'; mark.style.top='-42px'; mark.style.fontSize='11px'; mark.style.color='#ffd'; mark.textContent = statusName;
+            entity.el.appendChild(mark);
+            timeoutIds.push(setTimeout(()=>{
+                entity.status[statusName]=false;
+                mark.remove();
+                log(`${entity.id} 状态 ${statusName} 结束`);
+            }, sec*1000));
+        }
+
+        // 扇形判断（基于向量角度）
+        function isInCone(origin, forward, target, angleDeg, rangeM){
+            const dx = target.left + target.el.offsetWidth/2 - (origin.left + origin.el.offsetWidth/2);
+            const dy = target.top + target.el.offsetHeight/2 - (origin.top + origin.el.offsetHeight/2);
+            const dist = Math.hypot(dx,dy);
+            if (dist > rangeM*METER_PX) return false;
+            const fx = Math.cos(forward), fy = Math.sin(forward);
+            const dot = (dx*fx + dy*fy);
+            const cosA = Math.cos(angleDeg*Math.PI/180/2);
+            const mag = Math.hypot(dx,dy);
+            if (mag===0) return true;
+            return (dot / (mag)) >= cosA;
+        }
+
+        // 主要技能执行（始终以释放者为中心，受击者为方向，所有范围/扇形/跳跃均遵循此规则）
+        function executeSkill(data){
+            const type = data.type;
+            stopAllEffects();
+            clearAllTimers();
+
+            const aliveMonsters = monsters.filter(m=>m.hp>0);
+
+            // 释放者
+            let releaseObj = player;
+            if (data.releaseIndex === 'player' || !data.releaseIndex) {
+                releaseObj = player;
+            } else if (typeof data.releaseIndex === 'string' && data.releaseIndex.startsWith('m')) {
+                const idx = Number(data.releaseIndex.slice(1));
+                if (monsters[idx]) releaseObj = monsters[idx];
+            }
+
+            // 受击目标
+            let hitObjs = [];
+            if (data.targetIndex === 'player') hitObjs = [player];
+            else if (data.targetIndex === 'all') hitObjs = aliveMonsters.slice();
+            else if (typeof data.targetIndex === 'number') {
+                const m = monsters[data.targetIndex];
+                if (m && m.hp>0) hitObjs = [m];
+            } else {
+                if (aliveMonsters[0]) hitObjs = [aliveMonsters[0]];
+            }
+            const hitObj = hitObjs[0] || null;
+
+            // 扇形技能
+            if (type==='cone'){
+                const angle = data.coneAngle || 180;
+                const range = data.range || 5;
+
+                // 计算释放者对受击者的方向
+                let forwardAngle = 0;
+                if (hitObj && releaseObj) {
+                    const rx = releaseObj.left + releaseObj.el.offsetWidth/2;
+                    const ry = releaseObj.top + releaseObj.el.offsetHeight/2;
+                    const hx = hitObj.left + hitObj.el.offsetWidth/2;
+                    const hy = hitObj.top + hitObj.el.offsetHeight/2;
+                    forwardAngle = Math.atan2(hy - ry, hx - rx);
+                }
+
+                // 绘制SVG扇形
+                const rpx = range * METER_PX;
+                const cx = releaseObj.left + releaseObj.el.offsetWidth/2;
+                const cy = releaseObj.top + releaseObj.el.offsetHeight/2;
+                const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+                svg.setAttribute('class','cone-shape');
+                svg.style.position = 'absolute';
+                svg.style.left = (cx - rpx) + 'px';
+                svg.style.top = (cy - rpx) + 'px';
+                svg.style.width = (rpx*2)+'px';
+                svg.style.height = (rpx*2)+'px';
+
+                // 计算扇形路径
+                const startAngle = forwardAngle - (angle/2)*Math.PI/180;
+                const endAngle = forwardAngle + (angle/2)*Math.PI/180;
+                const x1 = rpx + rpx * Math.cos(startAngle);
+                const y1 = rpx + rpx * Math.sin(startAngle);
+                const x2 = rpx + rpx * Math.cos(endAngle);
+                const y2 = rpx + rpx * Math.sin(endAngle);
+
+                const largeArcFlag = angle > 180 ? 1 : 0;
+                const pathData = `
+                    M ${rpx},${rpx}
+                    L ${x1},${y1}
+                    A ${rpx},${rpx} 0 ${largeArcFlag} 1 ${x2},${y2}
+                    Z
+                `;
+                const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+                path.setAttribute('d', pathData);
+                path.setAttribute('fill', 'rgba(255,200,0,0.18)');
+                path.setAttribute('stroke', 'rgba(255,200,0,0.9)');
+                path.setAttribute('stroke-width', '2');
+                svg.appendChild(path);
+                demoWindow.appendChild(svg);
+                timeoutIds.push(setTimeout(()=>{ svg.remove(); }, 2000));
+
+                // 所有在扇形范围内的怪物都会受到伤害/效果
+                aliveMonsters.forEach(m=>{
+                    if (m === releaseObj) return;
+                    const ox = releaseObj.left + releaseObj.el.offsetWidth/2;
+                    const oy = releaseObj.top + releaseObj.el.offsetHeight/2;
+                    const tx = m.left + m.el.offsetWidth/2;
+                    const ty = m.top + m.el.offsetHeight/2;
+                    const dx = tx - ox;
+                    const dy = ty - oy;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > range * METER_PX) return;
+                    const theta = Math.atan2(dy, dx);
+                    let delta = theta - forwardAngle;
+                    while (delta > Math.PI) delta -= 2*Math.PI;
+                    while (delta < -Math.PI) delta += 2*Math.PI;
+                    if (Math.abs(delta) <= (angle/2)*Math.PI/180) {
+                        if (data.damage) applyDamageToEntity(m, data.damage);
+                        if (data.buffType) applyPeriodicBuff(m, data.buffType);
+                        if (data.status) applyStatus(m, data.status, data.duration||1);
+                    }
+                });
+                return;
+            }
+
+            // 范围技能
+            if (type==='area' || data.range){
+                const range = data.range || 5;
+                // 范围提示圈以释放者为中心
+                const rpx = range * METER_PX;
+                const cx = releaseObj.left + releaseObj.el.offsetWidth/2;
+                const cy = releaseObj.top + releaseObj.el.offsetHeight/2;
+                const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+                svg.setAttribute('class','cone-shape');
+                svg.style.position = 'absolute';
+                svg.style.left = (cx - rpx) + 'px';
+                svg.style.top = (cy - rpx) + 'px';
+                svg.style.width = (rpx*2)+'px';
+                svg.style.height = (rpx*2)+'px';
+                const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+                circle.setAttribute('cx', rpx);
+                circle.setAttribute('cy', rpx);
+                circle.setAttribute('r', rpx-2);
+                circle.setAttribute('fill', 'rgba(255,200,0,0.18)');
+                circle.setAttribute('stroke', 'rgba(255,200,0,0.9)');
+                circle.setAttribute('stroke-width', '2');
+                svg.appendChild(circle);
+                demoWindow.appendChild(svg);
+                timeoutIds.push(setTimeout(()=>{ svg.remove(); }, 2000));
+
+                // 所有在范围内的怪物都会受到伤害/效果
+                aliveMonsters.forEach(m=>{
+                    const dx = (m.left + m.el.offsetWidth/2) - (releaseObj.left + releaseObj.el.offsetWidth/2);
+                    const dy = (m.top + m.el.offsetHeight/2) - (releaseObj.top + releaseObj.el.offsetHeight/2);
+                    const d = Math.hypot(dx,dy);
+                    if (d <= range*METER_PX){
+                        if (data.damage) applyDamageToEntity(m, data.damage);
+                        if (data.buffType) applyPeriodicBuff(m, data.buffType);
+                        if (data.status) applyStatus(m, data.status, data.duration||1);
+                    }
+                });
+                return;
+            }
+
+            // 跳跃技能
+            if (data.isJump){
+                if (hitObj && releaseObj){
+                    const origLeft = releaseObj.left, origTop = releaseObj.top;
+                    const tx = hitObj.left - 30, ty = hitObj.top;
+                    releaseObj.el.style.transition = 'all 0.35s ease';
+                    releaseObj.el.style.left = tx+'px'; releaseObj.el.style.top = ty+'px';
+                    releaseObj.left = tx; releaseObj.top = ty;
+                    // 范围提示圈（黄色高亮圈）
+                    if (data.range){
+                        const rpx = data.range*METER_PX;
+                        const cx = tx + releaseObj.el.offsetWidth/2;
+                        const cy = ty + releaseObj.el.offsetHeight/2;
+                        const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+                        svg.setAttribute('class','cone-shape');
+                        svg.style.position = 'absolute';
+                        svg.style.left = (cx - rpx) + 'px';
+                        svg.style.top = (cy - rpx) + 'px';
+                        svg.style.width = (rpx*2)+'px';
+                        svg.style.height = (rpx*2)+'px';
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+                        circle.setAttribute('cx', rpx);
+                        circle.setAttribute('cy', rpx);
+                        circle.setAttribute('r', rpx-2);
+                        circle.setAttribute('fill', 'rgba(255,200,0,0.18)');
+                        circle.setAttribute('stroke', 'rgba(255,200,0,0.9)');
+                        circle.setAttribute('stroke-width', '2');
+                        svg.appendChild(circle);
+                        demoWindow.appendChild(svg);
+                        timeoutIds.push(setTimeout(()=>{ svg.remove(); }, 2000));
+                    }
+                    // 范围伤害
+                    const range = data.range || 5;
+                    monsters.forEach(m=>{
+                        const dx = (m.left + m.el.offsetWidth/2) - (tx + releaseObj.el.offsetWidth/2);
+                        const dy = (m.top + m.el.offsetHeight/2) - (ty + releaseObj.el.offsetHeight/2);
+                        const d = Math.hypot(dx,dy);
+                        if (d <= range*METER_PX){
+                            if (data.damage) applyDamageToEntity(m, data.damage);
+                            if (data.buffType) applyPeriodicBuff(m, data.buffType);
+                            if (data.status) applyStatus(m, data.status, data.duration||1);
+                        }
+                    });
+                   // 仅当勾选“位移后返回原点”时才回到原点
+                   if (jumpBackCheckbox.checked) {
+                       timeoutIds.push(setTimeout(()=>{
+                           releaseObj.el.style.left = origLeft + 'px';
+                           releaseObj.el.style.top = origTop + 'px';
+                           releaseObj.left = origLeft; releaseObj.top = origTop;
+                       }, 700));
+                   }
+                }
+                return;
+            }
+
+            // 位移技能
+            if (type==='displace' && data.displacementType){
+                // 冲锋/跳跃：释放者朝受击目标移动
+                if (data.displacementType === 'charge' || data.displacementType === 'jump') {
+                    if (hitObj && releaseObj && hitObj !== releaseObj) {
+                        const origLeft = releaseObj.left, origTop = releaseObj.top;
+                        // 目标点为受击目标中心
+                        const tx = hitObj.left + hitObj.el.offsetWidth/2 - releaseObj.el.offsetWidth/2;
+                        const ty = hitObj.top + hitObj.el.offsetHeight/2 - releaseObj.el.offsetHeight/2;
+                        releaseObj.el.style.transition = 'all 0.35s ease';
+                        releaseObj.el.style.left = tx+'px'; releaseObj.el.style.top = ty+'px';
+                        releaseObj.left = tx; releaseObj.top = ty;
+                        // 可选：0.7秒后回到原地
+                        timeoutIds.push(setTimeout(()=>{
+                            releaseObj.el.style.left = origLeft + 'px';
+                            releaseObj.el.style.top = origTop + 'px';
+                            releaseObj.left = origLeft; releaseObj.top = origTop;
+                        }, 700));
+                    }
+                }
+                // 击退：受击目标远离释放者
+                else if (data.displacementType === 'knockback') {
+                    const list = hitObjs.length? hitObjs : aliveMonsters;
+                    list.forEach((m)=>{
+                        if (m === releaseObj) return;
+                        const dx = m.left - releaseObj.left; const dy = m.top - releaseObj.top;
+                        const dist = Math.hypot(dx,dy) || 1;
+                        const nx = m.left + (dx/dist) * (data.displacementDist*METER_PX);
+                        const ny = m.top + (dy/dist) * (data.displacementDist*METER_PX);
+                        m.left = Math.max(0, Math.min(demoWindow.clientWidth-m.el.offsetWidth, nx));
+                        m.top = Math.max(0, Math.min(demoWindow.clientHeight-m.el.offsetHeight, ny));
+                        m.el.style.left = m.left+'px'; m.el.style.top = m.top+'px';
+                        log(`${m.id} 被击退到 ${Math.floor(m.left)},${Math.floor(m.top)}`);
+                    });
+                }
+                return;
+            }
+
+            // 点名技能
+            if (type==='target'){
+                hitObjs.forEach(t=>{
+                    if (t === releaseObj) return;
+                    if (data.damage) applyDamageToEntity(t, data.damage);
+                    if (data.buffType) applyPeriodicBuff(t, data.buffType);
+                });
+                return;
+            }
+
+            // 单体伤害
+            if (data.damage && !data.isJump && type!=='target'){
+                if (hitObj && hitObj !== releaseObj) applyDamageToEntity(hitObj, data.damage);
+            }
+
+            // Buff
+            if (data.buffType && data.buffType.type){
+                const list = (data.targetIndex === 'all')? aliveMonsters : (hitObjs.length? hitObjs : aliveMonsters);
+                list.forEach(m=>{ if (m !== releaseObj) applyPeriodicBuff(m, data.buffType); });
+            }
+
+            // 状态
+            if (data.status){
+                const list = hitObjs.length? hitObjs : aliveMonsters;
+                list.forEach(m=>{ if (m !== releaseObj) applyStatus(m, data.status, data.duration||1); });
+            }
+        }
+
+        // 解析技能描述到标准data（自动识别释放者/受击者）
+        function parseSkillDesc(text){
+            const data = { type: 'auto', range:0, damage:0, damageRate:0, buffType:null, duration:0, isJump:false, status:null, coneAngle:120, displacementType:null, displacementDist:0, targetIndex: null, releaseIndex: null };
+            const t = text;
+            if (/跳跃/.test(t) || /回到原地/.test(t)) data.isJump = true;
+            const rangeMatch = t.match(/(\d+)m/); if (rangeMatch) data.range = Number(rangeMatch[1]);
+            const dmgMatch = t.match(/(\d+)点?伤害/); if (dmgMatch) data.damage = Number(dmgMatch[1]);
+            const rateMatch = t.match(/(\d+)%攻击/); if (rateMatch) data.damageRate = Number(rateMatch[1])/100;
+            if (data.damageRate>0) data.damage = Math.floor(Number(player.atk||player.atk)*data.damageRate);
+            const buffMatch = t.match(/(中毒|烧伤|流血).*持续(\d+)秒/);
+            if (buffMatch){ const type = buffMatch[1]; const dur = Number(buffMatch[2]); let dps=0; if (type==='烧伤') dps=20; if (type==='中毒') dps=15; if (type==='流血') dps=12; data.buffType={type, dps, duration:dur}; }
+            if (/眩晕/.test(t)) data.status='眩晕';
+            if (/沉默/.test(t)) data.status='沉默';
+            if (/禁锢/.test(t)) data.status='禁锢';
+            const coneMatch = t.match(/扇形(\d+)°/);
+            if (coneMatch){ data.type='cone'; data.coneAngle = Number(coneMatch[1]); }
+            if (/击退|冲锋|跳越/.test(t)){
+                data.type='displace';
+                data.displacementType = /击退/.test(t)?'knockback':(/冲锋/.test(t)?'charge':'jump');
+                const distMatch = t.match(/(\d+)m/);
+                data.displacementDist = distMatch?Number(distMatch[1]):2;
+            }
+            if (/范围/.test(t) && data.range>0) data.type='area';
+            if (/点名/.test(t)) data.type='target';
+            // 受击目标
+            const targetMatch = t.match(/(?:对)?(?:怪物|monster)(\d+)/i);
+            if (targetMatch){ data.targetIndex = Number(targetMatch[1]) - 1; }
+            // 优化：如果描述包含“玩家跳跃”或“玩家释放”或“玩家发动”或“玩家使用”或“玩家跳跃至”，则releaseIndex为player
+            if (/玩家(跳跃|释放|发动|使用|跳跃至)/.test(t)) data.releaseIndex = 'player';
+            // 如果描述为“怪物N跳跃”或“怪物N释放”等，则releaseIndex为对应怪物
+            else {
+                const relMatch = t.match(/怪物(\d+)(跳跃|释放|发动|使用|跳跃至)/);
+                if (relMatch) data.releaseIndex = 'm' + (Number(relMatch[1])-1);
+            }
+            return data;
+        }
+
+        // 执行按钮逻辑：支持多个描述与下拉目标优先
+        executeBtn.addEventListener('click', async ()=>{
+            const parseAuto = skillTypeSelect.value==='auto';
+            const descs = [skillDesc1.value.trim(), skillDesc2.value.trim(), skillDesc3.value.trim()].filter(Boolean);
+            const useMultiple = execMultipleCheckbox.checked;
+            const toExecute = useMultiple ? descs : (descs.length? [descs[0]] : []);
+            if (toExecute.length===0){ alert('请至少填写一个技能描述'); return; }
+
+            let intervalInput = Math.max(0, Number(multipleIntervalInput.value) || 10000);
+            let intervalSec = intervalInput / 10000;
+
+            const releaseSel = releaseTargetSelect.value;
+            const hitSel = hitTargetSelect.value;
+
+            for (let i=0;i<toExecute.length;i++){
+                const parsed = parseSkillDesc(toExecute[i]);
+                let final = parsed;
+                if (!parseAuto){
+                    final.type = skillTypeSelect.value;
+                    final.coneAngle = Number(coneAngleSelect.value);
+                }
+                if (releaseSel && releaseSel!=='auto') final.releaseIndex = releaseSel;
+                if (hitSel && hitSel!=='auto') final.targetIndex = hitSel;
+                log('执行技能：'+JSON.stringify(final));
+                executeSkill(final);
+                if (!useMultiple) break;
+                await new Promise(r=>setTimeout(r, intervalInput));
+            }
+        });
+
+        // 重置按钮逻辑
+        resetBtn.addEventListener('click', ()=>{
+            if (confirm('确定要重置场景吗？')) initScene();
+        });
+
+        // 初始化场景
+        initScene();
+    </script>
+</body>
+</html>
