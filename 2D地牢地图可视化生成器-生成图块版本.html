@@ -175,9 +175,13 @@
         <button id="exportTMXBtn">导出TMX文件</button>
         <!-- 新增：独立的下载TSX文件按钮 -->
         <button id="exportTSXBtn">下载TSX图块文件</button>
+
+        <!-- 新增：编辑/保存生成点按钮 -->
+        <button id="editSpawnsBtn" style="background-color:#FF7043;">编辑生成点</button>
+        <button id="saveSpawnsBtn" style="background-color:#607D8B; display:none;">保存位置</button>
     </div>
     <canvas id="mapCanvas" width="800" height="800"></canvas>
-    <div id="labelsContainer" style="position: relative; width: 800px; height: 800px; margin-top: -800px;"></div>
+    <div id="labelsContainer" style="position: relative; width: 800px; height: 800px; margin-top: -800px; pointer-events: none;"></div>
 
     <script>
         // 全局配置
@@ -233,6 +237,15 @@
         const exportTSXBtn = document.getElementById('exportTSXBtn'); // 新增TSX下载按钮
         const labelsContainer = document.getElementById('labelsContainer');
 
+        // 编辑/保存生成点按钮元素
+        const editSpawnsBtn = document.getElementById('editSpawnsBtn');
+        const saveSpawnsBtn = document.getElementById('saveSpawnsBtn');
+
+        // 编辑模式变量
+        let editMode = false;
+        let dragging = null; // { type: 'player'|'monster'|'event', index: number|null }
+        const spawnPickRadiusPx = config.cellSize * 0.8;
+         
         // 全局变量存储生成点数据
         let monsterSpawnPoints = []; // 怪物生成点
         let playerSpawnPoint = null; // 玩家出生点
@@ -276,7 +289,28 @@
         generateEventBtn.addEventListener('click', generateEventPoints);
         exportTMXBtn.addEventListener('click', exportToTMX);
         exportTSXBtn.addEventListener('click', exportToTSX); // 绑定TSX下载事件
-
+        // 编辑/保存按钮绑定
+        editSpawnsBtn.addEventListener('click', () => {
+            editMode = !editMode;
+            updateEditUI();
+        });
+        saveSpawnsBtn.addEventListener('click', () => {
+            const payload = {
+                player: playerSpawnPoint,
+                monsters: monsterSpawnPoints,
+                events: eventSpawnPoints
+            };
+            try {
+                localStorage.setItem('dungeon_spawns', JSON.stringify(payload));
+                editMode = false;
+                updateEditUI();
+                alert('生成点位置已保存（localStorage）。');
+            } catch (e) {
+                console.error('保存失败', e);
+                alert('保存失败，请查看控制台错误信息。');
+            }
+        });
+ 
         // 地图数据存储（二维数组）：
         // 0=普通墙壁，1=路径，2=通道，3=路径边缘黑色墙壁
         let mapData = [];
@@ -1066,6 +1100,116 @@ ${generateLayerCSV('player')}
 
         // 初始生成地图
         generateMap();
+
+        function updateEditUI() {
+            if (editMode) {
+                editSpawnsBtn.textContent = '停止编辑';
+                saveSpawnsBtn.style.display = 'inline-block';
+                canvas.style.cursor = 'crosshair';
+            } else {
+                editSpawnsBtn.textContent = '编辑生成点';
+                saveSpawnsBtn.style.display = 'none';
+                canvas.style.cursor = 'default';
+            }
+        }
+
+        // 将鼠标事件坐标转换成格子坐标（返回格子坐标和像素偏移）
+        function getMouseGridPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            const gx = Math.floor(offsetX / config.cellSize);
+            const gy = Math.floor(offsetY / config.cellSize);
+            return { x: gx, y: gy, offsetX, offsetY };
+        }
+
+        // 鼠标交互：按下开始选择要拖动的点
+        canvas.addEventListener('mousedown', (e) => {
+            if (!editMode) return;
+            const { x: gx, y: gy, offsetX, offsetY } = getMouseGridPos(e);
+            // 检查玩家点
+            if (playerSpawnPoint) {
+                const px = playerSpawnPoint.x * config.cellSize + config.cellSize / 2;
+                const py = playerSpawnPoint.y * config.cellSize + config.cellSize / 2;
+                const dist = Math.hypot(offsetX - px, offsetY - py);
+                if (dist <= spawnPickRadiusPx) {
+                    dragging = { type: 'player', index: null };
+                    return;
+                }
+            }
+            // 检查怪物点
+            for (let i = 0; i < monsterSpawnPoints.length; i++) {
+                const p = monsterSpawnPoints[i];
+                const px = p.x * config.cellSize + config.cellSize / 2;
+                const py = p.y * config.cellSize + config.cellSize / 2;
+                const dist = Math.hypot(offsetX - px, offsetY - py);
+                if (dist <= spawnPickRadiusPx) {
+                    dragging = { type: 'monster', index: i };
+                    return;
+                }
+            }
+            // 检查事件点
+            for (let i = 0; i < eventSpawnPoints.length; i++) {
+                const p = eventSpawnPoints[i];
+                const px = p.x * config.cellSize + config.cellSize / 2;
+                const py = p.y * config.cellSize + config.cellSize / 2;
+                const dist = Math.hypot(offsetX - px, offsetY - py);
+                if (dist <= spawnPickRadiusPx) {
+                    dragging = { type: 'event', index: i };
+                    return;
+                }
+            }
+        });
+
+        // 鼠标移动时更新被拖动点的位置（仅在编辑模式且存在拖动目标时）
+        canvas.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const { x: gx, y: gy } = getMouseGridPos(e);
+            const cx = Math.max(0, Math.min(config.mapSize - 1, gx));
+            const cy = Math.max(0, Math.min(config.mapSize - 1, gy));
+            // 优先要求目标格为路径（mapData===1），若不是尝试邻近1格
+            if (mapData[cy][cx] !== 1) {
+                let found = false;
+                const checks = [[0,0],[-1,0],[1,0],[0,-1],[0,1]];
+                for (const [dx, dy] of checks) {
+                    const nx = cx + dx, ny = cy + dy;
+                    if (nx >=0 && nx < config.mapSize && ny >=0 && ny < config.mapSize && mapData[ny][nx] === 1) {
+                        if (dragging.type === 'player') playerSpawnPoint = { x: nx, y: ny };
+                        else if (dragging.type === 'monster') monsterSpawnPoints[dragging.index] = { x: nx, y: ny };
+                        else eventSpawnPoints[dragging.index] = { x: nx, y: ny };
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return;
+            } else {
+                if (dragging.type === 'player') playerSpawnPoint = { x: cx, y: cy };
+                else if (dragging.type === 'monster') monsterSpawnPoints[dragging.index] = { x: cx, y: cy };
+                else if (dragging.type === 'event') eventSpawnPoints[dragging.index] = { x: cx, y: cy };
+            }
+            drawMap();
+            createAllLabels();
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (dragging) dragging = null;
+        });
+
+        // 页面加载时尝试从 localStorage 恢复保存的位置
+        (function tryLoadSavedSpawns(){
+            try {
+                const raw = localStorage.getItem('dungeon_spawns');
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed) {
+                    if (parsed.player) playerSpawnPoint = parsed.player;
+                    if (Array.isArray(parsed.monsters)) monsterSpawnPoints = parsed.monsters;
+                    if (Array.isArray(parsed.events)) eventSpawnPoints = parsed.events;
+                }
+            } catch (e) {
+                console.warn('加载已保存生成点失败', e);
+            }
+        })();
     </script>
 </body>
 </html>
