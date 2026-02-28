@@ -128,12 +128,18 @@
 </head>
 <body>
     <div class="controls">
+        <!-- 画布宽高输入框，建议放在最顶部 -->
+        <div class="control-item">
+            <label for="canvasWidth">画布宽度：</label>
+            <input type="number" id="canvasWidth" min="10" max="100" value="50" style="width:60px;">
+            <label for="canvasHeight">高度：</label>
+            <input type="number" id="canvasHeight" min="10" max="100" value="50" style="width:60px;">
+        </div>
         <div class="control-item">
             <label for="rectCount">矩形数量：</label>
             <input type="range" id="rectCount" min="1" max="10" value="2">
             <span class="value-display" id="rectCountValue">2</span>
         </div>
-        <!-- 新增：矩形最小/最大尺寸 -->
         <div class="control-item">
             <label for="minRectSize">矩形最小尺寸：</label>
             <input type="number" id="minRectSize" min="5" max="50" value="14" style="width:60px;">
@@ -144,8 +150,8 @@
             <label for="doorCount">通道数量：</label>
             <input type="range" id="doorCount" min="1" max="4" value="2">
             <span class="value-display" id="doorCountValue">2</span>
+            <label style="margin-left:20px;"><input type="checkbox" id="doorCenter">是否正中</label>
         </div>
-        <!-- 通道方向四选 -->
         <div class="control-item">
             <label>通道方向：</label>
             <label><input type="checkbox" id="doorTop">正上</label>
@@ -158,6 +164,7 @@
             <label for="pathWidth">路径宽度（格）：</label>
             <input type="range" id="pathWidth" min="1" max="10" value="3">
             <span class="value-display" id="pathWidthValue">3</span>
+            <label style="margin-left:20px;"><input type="checkbox" id="pathStraight">是否路径为直线</label>
         </div>
         <div class="control-item">
             <label for="monsterCount">怪物生成点：</label>
@@ -169,12 +176,10 @@
             <input type="range" id="eventCount" min="1" max="10" value="2">
             <span class="value-display" id="eventCountValue">2</span>
         </div>
-        <!-- 新增：输出名称 -->
         <div class="control-item">
             <label for="outputName">输出名称：</label>
             <input type="text" id="outputName" value="dungeon_map" style="width:180px;">
         </div>
-        <!-- 新增：图块图片上传区域 -->
         <div class="image-upload" id="imageUploadArea">
             点击上传你的图块集图片（建议尺寸：每个图块64x64，横向排列）
             <input type="file" id="tileImageInput" accept="image/png,image/jpg,image/jpeg" style="display: none;">
@@ -183,11 +188,8 @@
         <button id="regenerateBtn">重新生成地图</button>
         <button id="generateSpawnBtn">生成怪物/玩家出生点</button>
         <button id="generateEventBtn">生成特殊事件刷新点</button>
-        <!-- 导出TMX按钮 -->
         <button id="exportTMXBtn">导出TMX文件</button>
-        <!-- 新增：独立的下载TSX文件按钮 -->
         <button id="exportTSXBtn">下载TSX图块文件</button>
-        <!-- 新增：编辑/保存生成点按钮 -->
         <button id="editSpawnsBtn" style="background-color:#FF7043;">编辑生成点</button>
         <button id="saveSpawnsBtn" style="background-color:#607D8B; display:none;">保存位置</button>
     </div>
@@ -197,41 +199,38 @@
     <script>
         // 全局配置
         const config = {
-            mapSize: 50,          // 地图最大尺寸 50*50
-            cellSize: 16,         // 每个格子的像素大小
-            wallThickness: 1,     // 墙壁厚度
-            doorSize: 3,          // 门（通道）的尺寸 3*3
-            edgeAvoid: 3,         // 避开地图边缘的格子数（3格）
+            mapWidth: 50,
+            mapHeight: 50,
+            cellSize: 16,
+            wallThickness: 1,
+            doorSize: 3,
+            edgeAvoid: 3,
             colors: {
-                normalWall: '#666666', // 普通墙壁颜色
-                pathWall: '#000000',    // 路径边缘黑色墙壁
-                path: '#4CAF50',        // 路径颜色（绿色）
-                door: '#FF69B4',        // 通道颜色（粉色）
-                background: '#dddddd',  // 画布背景色
-                monsterSpawn: '#FF0000',// 怪物生成点颜色（红色）
-                playerSpawn: '#0000FF', // 玩家出生点颜色（蓝色）
-                eventSpawn: '#FFFF00'   // 特殊事件点颜色（黄色）
+                normalWall: '#666666',
+                pathWall: '#000000',
+                path: '#4CAF50',
+                door: '#FF69B4',
+                background: '#dddddd',
+                monsterSpawn: '#FF0000',
+                playerSpawn: '#0000FF',
+                eventSpawn: '#FFFF00'
             },
-            tmxTileSize: 64,      // TMX文件中每个瓦片的像素大小
-            tileSetColumns: 10,   // 图块集列数（根据你提供的图片调整）
-            tileSetImageName: 'dungeon_tileset.png' // 默认图块集图片名
+            tmxTileSize: 64,
+            tileSetColumns: 10,
+            tileSetImageName: 'dungeon_tileset.png'
         };
 
-        // 全局变量 - 存储上传的图块图片信息
         let uploadedTileImage = null;
         let tileImageBase64 = null;
 
-        // 获取DOM元素
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
         const rectCountSlider = document.getElementById('rectCount');
         const rectCountValue = document.getElementById('rectCountValue');
         const doorCountSlider = document.getElementById('doorCount');
         const doorCountValue = document.getElementById('doorCountValue');
-        // 新增：矩形尺寸输入
         const minRectSizeInput = document.getElementById('minRectSize');
         const maxRectSizeInput = document.getElementById('maxRectSize');
-        // 新增：输出名称输入
         const outputNameInput = document.getElementById('outputName');
         const pathWidthSlider = document.getElementById('pathWidth');
         const pathWidthValue = document.getElementById('pathWidthValue');
@@ -239,48 +238,42 @@
         const monsterCountValue = document.getElementById('monsterCountValue');
         const eventCountSlider = document.getElementById('eventCount');
         const eventCountValue = document.getElementById('eventCountValue');
-        // 新增：通道方向勾选
         const doorTopCheckbox = document.getElementById('doorTop');
         const doorRightCheckbox = document.getElementById('doorRight');
         const doorBottomCheckbox = document.getElementById('doorBottom');
         const doorLeftCheckbox = document.getElementById('doorLeft');
-
-        // 新增：图片上传相关元素
         const imageUploadArea = document.getElementById('imageUploadArea');
         const tileImageInput = document.getElementById('tileImageInput');
         const tileImagePreview = document.getElementById('tileImagePreview');
-
         const regenerateBtn = document.getElementById('regenerateBtn');
         const generateSpawnBtn = document.getElementById('generateSpawnBtn');
         const generateEventBtn = document.getElementById('generateEventBtn');
         const exportTMXBtn = document.getElementById('exportTMXBtn');
-        const exportTSXBtn = document.getElementById('exportTSXBtn'); // 新增TSX下载按钮
+        const exportTSXBtn = document.getElementById('exportTSXBtn');
         const labelsContainer = document.getElementById('labelsContainer');
-
-        // 编辑/保存生成点按钮元素
         const editSpawnsBtn = document.getElementById('editSpawnsBtn');
         const saveSpawnsBtn = document.getElementById('saveSpawnsBtn');
+        const canvasWidthInput = document.getElementById('canvasWidth');
+        const canvasHeightInput = document.getElementById('canvasHeight');
+        const doorCenterCheckbox = document.getElementById('doorCenter');
+        const pathStraightCheckbox = document.getElementById('pathStraight');
 
-        // 编辑模式变量
         let editMode = false;
-        let dragging = null; // { type: 'player'|'monster'|'event', index: number|null }
+        let dragging = null;
         const spawnPickRadiusPx = config.cellSize * 0.8;
 
-        // 全局变量存储生成点数据
-        let monsterSpawnPoints = []; // 怪物生成点
-        let playerSpawnPoint = null; // 玩家出生点
-        let eventSpawnPoints = [];   // 特殊事件刷新点
-        let doorPositions = [];      // 存储通道位置用于距离计算
-        let doorCenters = [];        // 通道中心点（用于生成事件点）
+        let monsterSpawnPoints = [];
+        let playerSpawnPoint = null;
+        let eventSpawnPoints = [];
+        let doorPositions = [];
+        let doorCenters = [];
 
-        // 初始化滑块值显示
         rectCountValue.textContent = rectCountSlider.value;
         doorCountValue.textContent = doorCountSlider.value;
         pathWidthValue.textContent = pathWidthSlider.value;
         monsterCountValue.textContent = monsterCountSlider.value;
         eventCountValue.textContent = eventCountSlider.value;
 
-        // 滑块事件绑定
         rectCountSlider.addEventListener('input', () => {
             rectCountValue.textContent = rectCountSlider.value;
         });
@@ -297,24 +290,37 @@
             eventCountValue.textContent = eventCountSlider.value;
         });
 
-        // 新增：图片上传事件绑定
+        canvasWidthInput.addEventListener('change', () => {
+            let w = parseInt(canvasWidthInput.value);
+            if (isNaN(w) || w < 10) w = 10;
+            if (w > 100) w = 100;
+            config.mapWidth = w;
+            canvasWidthInput.value = w;
+            generateMap();
+        });
+        canvasHeightInput.addEventListener('change', () => {
+            let h = parseInt(canvasHeightInput.value);
+            if (isNaN(h) || h < 10) h = 10;
+            if (h > 100) h = 100;
+            config.mapHeight = h;
+            canvasHeightInput.value = h;
+            generateMap();
+        });
+
         imageUploadArea.addEventListener('click', () => {
             tileImageInput.click();
         });
         tileImageInput.addEventListener('change', handleTileImageUpload);
 
-        // 通道方向勾选变化时自动重新生成地图
         [doorTopCheckbox, doorRightCheckbox, doorBottomCheckbox, doorLeftCheckbox].forEach(cb => {
             cb.addEventListener('change', generateMap);
         });
 
-        // 按钮事件绑定
         regenerateBtn.addEventListener('click', generateMap);
         generateSpawnBtn.addEventListener('click', generateSpawnPoints);
         generateEventBtn.addEventListener('click', generateEventPoints);
         exportTMXBtn.addEventListener('click', exportToTMX);
-        exportTSXBtn.addEventListener('click', exportToTSX); // 绑定TSX下载事件
-        // 编辑/保存按钮绑定
+        exportTSXBtn.addEventListener('click', exportToTSX);
         editSpawnsBtn.addEventListener('click', () => {
             editMode = !editMode;
             updateEditUI();
@@ -336,33 +342,34 @@
             }
         });
 
-        // 地图数据存储（二维数组）：0=普通墙壁，1=路径，2=通道，3=路径边缘黑色墙壁
         let mapData = [];
 
-        // 初始化地图数据为全普通墙壁
         function initMap() {
-            mapData = Array(config.mapSize).fill().map(() =>
-                Array(config.mapSize).fill(0)
+            config.mapWidth = parseInt(canvasWidthInput.value) || 50;
+            config.mapHeight = parseInt(canvasHeightInput.value) || 50;
+            canvas.width = config.mapWidth * config.cellSize;
+            canvas.height = config.mapHeight * config.cellSize;
+            labelsContainer.style.width = canvas.width + 'px';
+            labelsContainer.style.height = canvas.height + 'px';
+
+            mapData = Array(config.mapHeight).fill().map(() =>
+                Array(config.mapWidth).fill(0)
             );
-            // 重置所有生成点数据
             monsterSpawnPoints = [];
             playerSpawnPoint = null;
             eventSpawnPoints = [];
             doorPositions = [];
             doorCenters = [];
-            // 清空标识文本
             labelsContainer.innerHTML = '';
         }
 
-        // 随机生成矩形路径（主路径）- 避开地图边缘3格，无重叠
         function generateMainRectPaths(rectCount) {
             const paths = [];
             const edge = config.edgeAvoid;
             const minX = edge;
-            const maxX = config.mapSize - edge - 1;
+            const maxX = config.mapWidth - edge - 1;
             const minY = edge;
-            const maxY = config.mapSize - edge - 1;
-            // 使用自定义尺寸
+            const maxY = config.mapHeight - edge - 1;
             const minRectSize = parseInt(minRectSizeInput.value);
             const maxRectSize = parseInt(maxRectSizeInput.value);
 
@@ -371,8 +378,8 @@
                 attemptCount++;
                 const width = Math.floor(Math.random() * (maxRectSize - minRectSize + 1)) + minRectSize;
                 const height = Math.floor(Math.random() * (maxRectSize - minRectSize + 1)) + minRectSize;
-                const x = Math.floor(Math.random() * (maxX - width - edge)) + minX;
-                const y = Math.floor(Math.random() * (maxY - height - edge)) + minY;
+                const x = Math.floor(Math.random() * (maxX - width - edge + 1)) + minX;
+                const y = Math.floor(Math.random() * (maxY - height - edge + 1)) + minY;
 
                 const isOverlap = paths.some(rect => {
                     return !(x + width < rect.x || x > rect.x + rect.width ||
@@ -395,12 +402,11 @@
             return paths;
         }
 
-        // 生成通道（门）- 支持四方向勾选
         function generateDoors() {
             const doors = [];
             const doorSize = config.doorSize;
-            const mapSize = config.mapSize;
-            // 读取四个方向勾选
+            const mapWidth = config.mapWidth;
+            const mapHeight = config.mapHeight;
             const selectedDirs = [];
             if (doorTopCheckbox.checked) selectedDirs.push('top');
             if (doorRightCheckbox.checked) selectedDirs.push('right');
@@ -409,32 +415,79 @@
             doorPositions = [];
             doorCenters = [];
 
-            selectedDirs.forEach(dir => {
-                let doorX = 0, doorY = 0;
-                const mapCenter = Math.floor(mapSize / 2);
-                const doorHalfSize = Math.floor(doorSize / 2);
+            let useCenter = doorCenterCheckbox.checked;
+            let doorCount = parseInt(doorCountSlider.value);
 
-                switch (dir) {
-                    case 'top':
-                        doorY = 0;
-                        doorX = mapCenter - doorHalfSize;
-                        break;
-                    case 'right':
-                        doorX = mapSize - doorSize;
-                        doorY = mapCenter - doorHalfSize;
-                        break;
-                    case 'bottom':
-                        doorY = mapSize - doorSize;
-                        doorX = mapCenter - doorHalfSize;
-                        break;
-                    case 'left':
-                        doorX = 0;
-                        doorY = mapCenter - doorHalfSize;
-                        break;
+            // 优化：始终遵循通道数量
+            let allDirs = ['top', 'right', 'bottom', 'left'];
+            let dirsToUse = [];
+
+            if (selectedDirs.length === 0) {
+                // 如果没勾选，自动选前doorCount个
+                dirsToUse = allDirs.slice(0, doorCount);
+            } else if (selectedDirs.length >= doorCount) {
+                dirsToUse = selectedDirs.slice(0, doorCount);
+            } else {
+                // 勾选数不足，补齐
+                let remain = doorCount - selectedDirs.length;
+                dirsToUse = [...selectedDirs];
+                for (let dir of allDirs) {
+                    if (!dirsToUse.includes(dir)) {
+                        dirsToUse.push(dir);
+                        if (dirsToUse.length === doorCount) break;
+                    }
                 }
-                // 边界保护
-                doorX = Math.max(0, Math.min(doorX, mapSize - doorSize));
-                doorY = Math.max(0, Math.min(doorY, mapSize - doorSize));
+            }
+
+            dirsToUse.forEach(dir => {
+                let doorX = 0, doorY = 0;
+                let mapCenterX = Math.floor(mapWidth / 2);
+                let mapCenterY = Math.floor(mapHeight / 2);
+                let doorHalfSize = Math.floor(doorSize / 2);
+
+                if (useCenter) {
+                    switch (dir) {
+                        case 'top':
+                            doorY = 0;
+                            doorX = mapCenterX - doorHalfSize;
+                            break;
+                        case 'right':
+                            doorX = mapWidth - doorSize;
+                            doorY = mapCenterY - doorHalfSize;
+                            break;
+                        case 'bottom':
+                            doorY = mapHeight - doorSize;
+                            doorX = mapCenterX - doorHalfSize;
+                            break;
+                        case 'left':
+                            doorX = 0;
+                            doorY = mapCenterY - doorHalfSize;
+                            break;
+                    }
+                } else {
+                    // 随机分布在边上
+                    switch (dir) {
+                        case 'top':
+                            doorY = 0;
+                            doorX = Math.floor(Math.random() * (mapWidth - doorSize));
+                            break;
+                        case 'right':
+                            doorX = mapWidth - doorSize;
+                            doorY = Math.floor(Math.random() * (mapHeight - doorSize));
+                            break;
+                        case 'bottom':
+                            doorY = mapHeight - doorSize;
+                            doorX = Math.floor(Math.random() * (mapWidth - doorSize));
+                            break;
+                        case 'left':
+                            doorX = 0;
+                            doorY = Math.floor(Math.random() * (mapHeight - doorSize));
+                            break;
+                    }
+                }
+
+                doorX = Math.max(0, Math.min(doorX, mapWidth - doorSize));
+                doorY = Math.max(0, Math.min(doorY, mapHeight - doorSize));
                 for (let dy = 0; dy < doorSize; dy++) {
                     for (let dx = 0; dx < doorSize; dx++) {
                         mapData[doorY + dy][doorX + dx] = 2;
@@ -449,7 +502,6 @@
             return doors;
         }
 
-        // 自定义宽度路径连接 - 读取滑块值，避开边缘
         function connectTwoPointsWithCustomPath(startX, startY, endX, endY, pathWidth) {
             startX = Math.round(startX);
             startY = Math.round(startY);
@@ -457,6 +509,64 @@
             endY = Math.round(endY);
             const halfWidth = Math.floor(pathWidth / 2);
 
+            if (pathStraightCheckbox && pathStraightCheckbox.checked) {
+                // 直线或竖线
+                if (startX === endX || startY === endY) {
+                    // 已经是直线
+                    let x1 = Math.min(startX, endX), x2 = Math.max(startX, endX);
+                    let y1 = Math.min(startY, endY), y2 = Math.max(startY, endY);
+                    for (let x = x1; x <= x2; x++) {
+                        for (let wY = -halfWidth; wY <= halfWidth; wY++) {
+                            let cy = startY + wY;
+                            if (cy >= config.edgeAvoid && cy < config.mapHeight - config.edgeAvoid &&
+                                x >= config.edgeAvoid && x < config.mapWidth - config.edgeAvoid &&
+                                mapData[cy][x] !== 2) {
+                                mapData[cy][x] = 1;
+                            }
+                        }
+                    }
+                    for (let y = y1; y <= y2; y++) {
+                        for (let wX = -halfWidth; wX <= halfWidth; wX++) {
+                            let cx = startX + wX;
+                            if (cx >= config.edgeAvoid && cx < config.mapWidth - config.edgeAvoid &&
+                                y >= config.edgeAvoid && y < config.mapHeight - config.edgeAvoid &&
+                                mapData[y][cx] !== 2) {
+                                mapData[y][cx] = 1;
+                            }
+                        }
+                    }
+                } else {
+                    // 先横后竖
+                    let midX = endX, midY = startY;
+                    // 横向
+                    let x1 = Math.min(startX, midX), x2 = Math.max(startX, midX);
+                    for (let x = x1; x <= x2; x++) {
+                        for (let wY = -halfWidth; wY <= halfWidth; wY++) {
+                            let cy = startY + wY;
+                            if (cy >= config.edgeAvoid && cy < config.mapHeight - config.edgeAvoid &&
+                                x >= config.edgeAvoid && x < config.mapWidth - config.edgeAvoid &&
+                                mapData[cy][x] !== 2) {
+                                mapData[cy][x] = 1;
+                            }
+                        }
+                    }
+                    // 竖向
+                    let y1 = Math.min(startY, endY), y2 = Math.max(startY, endY);
+                    for (let y = y1; y <= y2; y++) {
+                        for (let wX = -halfWidth; wX <= halfWidth; wX++) {
+                            let cx = endX + wX;
+                            if (cx >= config.edgeAvoid && cx < config.mapWidth - config.edgeAvoid &&
+                                y >= config.edgeAvoid && y < config.mapHeight - config.edgeAvoid &&
+                                mapData[y][cx] !== 2) {
+                                mapData[y][cx] = 1;
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 原有折线路径
             const dx = Math.abs(endX - startX);
             const dy = Math.abs(endY - startY);
             const sx = startX < endX ? 1 : -1;
@@ -468,8 +578,8 @@
                     for (let wY = -halfWidth; wY <= halfWidth; wY++) {
                         const currX = startX + wX;
                         const currY = startY + wY;
-                        if (currX >= config.edgeAvoid && currX < config.mapSize - config.edgeAvoid &&
-                            currY >= config.edgeAvoid && currY < config.mapSize - config.edgeAvoid &&
+                        if (currX >= config.edgeAvoid && currX < config.mapWidth - config.edgeAvoid &&
+                            currY >= config.edgeAvoid && currY < config.mapHeight - config.edgeAvoid &&
                             mapData[currY][currX] !== 2) {
                             mapData[currY][currX] = 1;
                         }
@@ -490,37 +600,152 @@
             }
         }
 
-        // 连接通道和路径、路径之间（读取滑块宽度）
+        // 新增辅助函数：判断路径是否会与已有路径交叉
+        function isPathCrossing(startX, startY, endX, endY, pathWidth) {
+            startX = Math.round(startX);
+            startY = Math.round(startY);
+            endX = Math.round(endX);
+            endY = Math.round(endY);
+            const halfWidth = Math.floor(pathWidth / 2);
+
+            const dx = Math.abs(endX - startX);
+            const dy = Math.abs(endY - startY);
+            const sx = startX < endX ? 1 : -1;
+            const sy = startY < endY ? 1 : -1;
+            let err = dx - dy;
+
+            let x = startX, y = startY;
+            while (true) {
+                for (let wX = -halfWidth; wX <= halfWidth; wX++) {
+                    for (let wY = -halfWidth; wY <= halfWidth; wY++) {
+                        const currX = x + wX;
+                        const currY = y + wY;
+                        if (
+                            currX >= config.edgeAvoid && currX < config.mapWidth - config.edgeAvoid &&
+                            currY >= config.edgeAvoid && currY < config.mapHeight - config.edgeAvoid
+                        ) {
+                            // 只允许走在未被占用的区域（0为墙，1为路径，2为门，3为路径墙）
+                            // 允许起点和终点重叠
+                            if (
+                                mapData[currY][currX] === 1 &&
+                                !(currX === startX && currY === startY) &&
+                                !(currX === endX && currY === endY)
+                            ) {
+                                return true; // 有交叉
+                            }
+                        }
+                    }
+                }
+                if (x === endX && y === endY) break;
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y += sy;
+                }
+            }
+            return false;
+        }
+
+        // 修改connectAllPaths，生成不交叉的路径
         function connectAllPaths(doors, paths) {
             const pathWidth = parseInt(pathWidthSlider.value);
+            const usedPairs = [];
+
+            // 连接门到最近的房间中心，避免交叉
             doors.forEach(door => {
-                let nearestPath = paths[0];
+                let nearestPath = null;
                 let minDist = Infinity;
-                paths.forEach(path => {
+                let minIndex = -1;
+                for (let i = 0; i < paths.length; i++) {
+                    const path = paths[i];
                     const dist = Math.hypot(door.centerX - path.centerX, door.centerY - path.centerY);
-                    if (dist < minDist) {
+                    if (
+                        dist < minDist &&
+                        !usedPairs.some(pair => pair[0] === door.centerX && pair[1] === door.centerY && pair[2] === path.centerX && pair[3] === path.centerY) &&
+                        !isPathCrossing(door.centerX, door.centerY, path.centerX, path.centerY, pathWidth)
+                    ) {
                         minDist = dist;
                         nearestPath = path;
+                        minIndex = i;
                     }
-                });
-                connectTwoPointsWithCustomPath(door.centerX, door.centerY, nearestPath.centerX, nearestPath.centerY, pathWidth);
+                }
+                // 如果找不到不交叉的，允许交叉一次
+                if (!nearestPath) {
+                    minDist = Infinity;
+                    for (let i = 0; i < paths.length; i++) {
+                        const path = paths[i];
+                        const dist = Math.hypot(door.centerX - path.centerX, door.centerY - path.centerY);
+                        if (
+                            dist < minDist &&
+                            !usedPairs.some(pair => pair[0] === door.centerX && pair[1] === door.centerY && pair[2] === path.centerX && pair[3] === path.centerY)
+                        ) {
+                            minDist = dist;
+                            nearestPath = path;
+                            minIndex = i;
+                        }
+                    }
+                }
+                if (nearestPath) {
+                    connectTwoPointsWithCustomPath(door.centerX, door.centerY, nearestPath.centerX, nearestPath.centerY, pathWidth);
+                    usedPairs.push([door.centerX, door.centerY, nearestPath.centerX, nearestPath.centerY]);
+                }
             });
 
-            for (let i = 0; i < paths.length - 1; i++) {
-                connectTwoPointsWithCustomPath(paths[i].centerX, paths[i].centerY, paths[i+1].centerX, paths[i+1].centerY, pathWidth);
+            // 连接房间之间，避免交叉
+            let connected = new Set();
+            connected.add(0);
+            while (connected.size < paths.length) {
+                let best = null;
+                let bestFrom = -1, bestTo = -1, bestDist = Infinity;
+                for (let from of connected) {
+                    for (let to = 0; to < paths.length; to++) {
+                        if (connected.has(to)) continue;
+                        const p1 = paths[from], p2 = paths[to];
+                        const dist = Math.hypot(p1.centerX - p2.centerX, p1.centerY - p2.centerY);
+                        if (
+                            dist < bestDist &&
+                            !isPathCrossing(p1.centerX, p1.centerY, p2.centerX, p2.centerY, pathWidth)
+                        ) {
+                            bestDist = dist;
+                            bestFrom = from;
+                            bestTo = to;
+                            best = [p1, p2];
+                        }
+                    }
+                }
+                // 如果找不到不交叉的，允许交叉一次
+                if (!best) {
+                    for (let from of connected) {
+                        for (let to = 0; to < paths.length; to++) {
+                            if (connected.has(to)) continue;
+                            const p1 = paths[from], p2 = paths[to];
+                            connectTwoPointsWithCustomPath(p1.centerX, p1.centerY, p2.centerX, p2.centerY, pathWidth);
+                            connected.add(to);
+                            best = true;
+                            break;
+                        }
+                        if (best) break;
+                    }
+                } else {
+                    connectTwoPointsWithCustomPath(best[0].centerX, best[0].centerY, best[1].centerX, best[1].centerY, pathWidth);
+                    connected.add(bestTo);
+                }
             }
         }
 
-        // 标记路径边缘的黑色墙壁
         function markPathWalls() {
-            for (let y = config.edgeAvoid; y < config.mapSize - config.edgeAvoid; y++) {
-                for (let x = config.edgeAvoid; x < config.mapSize - config.edgeAvoid; x++) {
+            for (let y = config.edgeAvoid; y < config.mapHeight - config.edgeAvoid; y++) {
+                for (let x = config.edgeAvoid; x < config.mapWidth - config.edgeAvoid; x++) {
                     if (mapData[y][x] === 1 || mapData[y][x] === 2) {
                         const dirs = [[-1,0], [1,0], [0,-1], [0,1]];
                         dirs.forEach(([dx, dy]) => {
                             const nx = x + dx;
                             const ny = y + dy;
-                            if (nx >= 0 && nx < config.mapSize && ny >= 0 && ny < config.mapSize) {
+                            if (nx >= 0 && nx < config.mapWidth && ny >= 0 && ny < config.mapHeight) {
                                 if (mapData[ny][nx] === 0) {
                                     mapData[ny][nx] = 3;
                                 }
@@ -531,13 +756,12 @@
             }
         }
 
-        // 绘制地图
         function drawMap() {
             ctx.fillStyle = config.colors.background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            for (let y = 0; y < config.mapSize; y++) {
-                for (let x = 0; x < config.mapSize; x++) {
+            for (let y = 0; y < config.mapHeight; y++) {
+                for (let x = 0; x < config.mapWidth; x++) {
                     const cellX = x * config.cellSize;
                     const cellY = y * config.cellSize;
 
@@ -554,7 +778,6 @@
                 }
             }
 
-            // 绘制所有生成点
             drawSpawnPoints(monsterSpawnPoints, config.colors.monsterSpawn);
             if (playerSpawnPoint) {
                 drawSpawnPoints([playerSpawnPoint], config.colors.playerSpawn);
@@ -562,7 +785,6 @@
             drawSpawnPoints(eventSpawnPoints, config.colors.eventSpawn);
         }
 
-        // 绘制生成点（通用方法）
         function drawSpawnPoints(points, color) {
             points.forEach(point => {
                 const cellX = point.x * config.cellSize;
@@ -570,33 +792,26 @@
                 const centerX = cellX + config.cellSize / 2;
                 const centerY = cellY + config.cellSize / 2;
 
-                // 绘制圆形标记
                 ctx.fillStyle = color;
                 ctx.beginPath();
                 ctx.arc(centerX, centerY, config.cellSize / 3, 0, Math.PI * 2);
                 ctx.fill();
-                // 绘制边框
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 1;
                 ctx.stroke();
             });
         }
 
-        // 创建所有标识文本
         function createAllLabels() {
             labelsContainer.innerHTML = '';
-
-            // 创建怪物生成点标识
             monsterSpawnPoints.forEach((point, index) => {
                 const label = document.createElement('div');
                 label.className = 'spawn-label';
-                label.textContent = 'monster';
+                label.textContent = `monster_${index + 1}`;
                 label.style.left = (point.x * config.cellSize + 2) + 'px';
                 label.style.top = (point.y * config.cellSize - 12) + 'px';
                 labelsContainer.appendChild(label);
             });
-
-            // 创建玩家出生点标识
             if (playerSpawnPoint) {
                 const label = document.createElement('div');
                 label.className = 'spawn-label';
@@ -605,24 +820,20 @@
                 label.style.top = (playerSpawnPoint.y * config.cellSize - 12) + 'px';
                 labelsContainer.appendChild(label);
             }
-
-            // 创建特殊事件点标识
             eventSpawnPoints.forEach((point, index) => {
                 const label = document.createElement('div');
                 label.className = 'event-label';
-                label.textContent = 'event';
+                label.textContent = `event_${index + 1}`;
                 label.style.left = (point.x * config.cellSize + 2) + 'px';
                 label.style.top = (point.y * config.cellSize - 12) + 'px';
                 labelsContainer.appendChild(label);
             });
         }
 
-        // 计算两点之间的欧几里得距离（格子距离）
         function getDistance(p1, p2) {
             return Math.hypot(p1.x - p2.x, p1.y - p2.y);
         }
 
-        // 获取到通道的最小距离
         function getMinDistanceToDoors(x, y) {
             let minDist = Infinity;
             doorPositions.forEach(door => {
@@ -634,33 +845,21 @@
             return minDist;
         }
 
-        // 检查点是否满足怪物生成条件
         function isMonsterSpawnValid(x, y) {
-            // 1. 必须是路径地块
             if (mapData[y][x] !== 1) return false;
-
-            // 2. 距离通道至少5格
             const distToDoor = getMinDistanceToDoors(x, y);
             if (distToDoor < 5) return false;
-
-            // 3. 与其他怪物生成点距离至少5格
             for (const point of monsterSpawnPoints) {
                 const dist = getDistance({x, y}, point);
                 if (dist < 5) return false;
             }
-
             return true;
         }
 
-        // 检查点是否满足玩家出生点条件
         function isPlayerSpawnValid(x, y) {
-            // 必须是路径地块
             if (mapData[y][x] !== 1) return false;
-
-            // 条件1：距离通道为3格 或 条件2：距离任意怪物生成点10格
             const distToDoor = getMinDistanceToDoors(x, y);
             let distToMonster = Infinity;
-
             if (monsterSpawnPoints.length > 0) {
                 monsterSpawnPoints.forEach(point => {
                     const dist = getDistance({x, y}, point);
@@ -669,48 +868,37 @@
                     }
                 });
             }
-
             return distToDoor === 3 || (monsterSpawnPoints.length > 0 && distToMonster >= 10);
         }
 
-        // 检查点是否满足特殊事件点条件
         function isEventSpawnValid(x, y) {
-            // 1. 必须是路径地块
             if (mapData[y][x] !== 1) return false;
-
-            // 2. 不与怪物/玩家点重合
             if (playerSpawnPoint && getDistance({x, y}, playerSpawnPoint) < 1) return false;
             for (const monster of monsterSpawnPoints) {
                 if (getDistance({x, y}, monster) < 1) return false;
             }
-
-            // 3. 与其他事件点距离至少10格
             for (const event of eventSpawnPoints) {
                 if (getDistance({x, y}, event) < 10) return false;
             }
-
             return true;
         }
 
-        // 获取通道1格距离的有效位置
         function getValidPositionNearDoor(doorCenter) {
-            const directions = [[-1,0], [1,0], [0,-1], [0,1]]; // 上下左右四个方向
+            const directions = [[-1,0], [1,0], [0,-1], [0,1]];
             for (const [dx, dy] of directions) {
                 const x = doorCenter.x + dx;
                 const y = doorCenter.y + dy;
-                // 检查是否在地图范围内且是路径地块
-                if (x >= 0 && x < config.mapSize && y >= 0 && y < config.mapSize &&
+                if (x >= 0 && x < config.mapWidth && y >= 0 && y < config.mapHeight &&
                     mapData[y][x] === 1 && isEventSpawnValid(x, y)) {
                     return {x, y};
                 }
             }
-            // 如果四个方向都不行，扩大搜索范围（最多3格）
             for (let d = 2; d <= 3; d++) {
                 const dirs = [[-d,0], [d,0], [0,-d], [0,d]];
                 for (const [dx, dy] of dirs) {
                     const x = doorCenter.x + dx;
                     const y = doorCenter.y + dy;
-                    if (x >= 0 && x < config.mapSize && y >= 0 && y < config.mapSize &&
+                    if (x >= 0 && x < config.mapWidth && y >= 0 && y < config.mapHeight &&
                         mapData[y][x] === 1 && isEventSpawnValid(x, y)) {
                         return {x, y};
                     }
@@ -719,60 +907,40 @@
             return null;
         }
 
-        // 生成怪物和玩家出生点
         function generateSpawnPoints() {
-            // 清空之前的生成点
             monsterSpawnPoints = [];
             playerSpawnPoint = null;
-
             const monsterCount = parseInt(monsterCountSlider.value);
             const edge = config.edgeAvoid;
-            const maxAttempts = 1000; // 最大尝试次数避免死循环
-
-            // 1. 生成怪物生成点
+            const maxAttempts = 1000;
             let attempts = 0;
             while (monsterSpawnPoints.length < monsterCount && attempts < maxAttempts) {
                 attempts++;
-                // 随机路径地块
-                const x = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-                const y = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-
+                const x = Math.floor(Math.random() * (config.mapWidth - 2 * edge)) + edge;
+                const y = Math.floor(Math.random() * (config.mapHeight - 2 * edge)) + edge;
                 if (isMonsterSpawnValid(x, y)) {
                     monsterSpawnPoints.push({x, y});
                 }
             }
-
-            // 2. 生成玩家出生点
             attempts = 0;
             while (!playerSpawnPoint && attempts < maxAttempts) {
                 attempts++;
-                const x = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-                const y = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-
+                const x = Math.floor(Math.random() * (config.mapWidth - 2 * edge)) + edge;
+                const y = Math.floor(Math.random() * (config.mapHeight - 2 * edge)) + edge;
                 if (isPlayerSpawnValid(x, y)) {
                     playerSpawnPoint = {x, y};
                 }
             }
-
-            // 重新绘制地图和标识
             drawMap();
             createAllLabels();
-
-            console.log(`生成了 ${monsterSpawnPoints.length} 个怪物生成点`);
-            console.log(`玩家出生点: ${playerSpawnPoint ? '已生成' : '生成失败'}`);
         }
 
-        // 生成特殊事件刷新点
         function generateEventPoints() {
-            // 清空之前的事件点
             eventSpawnPoints = [];
-
             const eventCount = parseInt(eventCountSlider.value);
             const doorCount = doorCenters.length;
             const edge = config.edgeAvoid;
             const maxAttempts = 1000;
-
-            // 1. 如果事件点数量 > 通道数量，先为每个通道生成1个（距离1格）
             const requiredDoorEvents = Math.min(doorCount, eventCount);
             for (let i = 0; i < requiredDoorEvents; i++) {
                 const doorCenter = doorCenters[i];
@@ -781,33 +949,22 @@
                     eventSpawnPoints.push(pos);
                 }
             }
-
-            // 2. 生成剩余的随机事件点
-            const remainingEvents = eventCount - eventSpawnPoints.length;
             let attempts = 0;
-
             while (eventSpawnPoints.length < eventCount && attempts < maxAttempts) {
                 attempts++;
-                const x = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-                const y = Math.floor(Math.random() * (config.mapSize - 2 * edge)) + edge;
-
+                const x = Math.floor(Math.random() * (config.mapWidth - 2 * edge)) + edge;
+                const y = Math.floor(Math.random() * (config.mapHeight - 2 * edge)) + edge;
                 if (isEventSpawnValid(x, y)) {
                     eventSpawnPoints.push({x, y});
                 }
             }
-
-            // 重新绘制地图和标识
             drawMap();
             createAllLabels();
-
-            console.log(`生成了 ${eventSpawnPoints.length} 个特殊事件点（目标：${eventCount}）`);
         }
 
-        // 生成完整地图（核心函数）
         function generateMap() {
-            const rectCount = parseInt(rectCountSlider.value);
-            // const doorCount = parseInt(doorCountSlider.value); // 不再用滑块数量
             initMap();
+            const rectCount = parseInt(rectCountSlider.value);
             const paths = generateMainRectPaths(rectCount);
             const doors = generateDoors();
             if (paths.length > 0 && doors.length > 0) {
@@ -815,80 +972,59 @@
             }
             markPathWalls();
             drawMap();
-
-            // 清空标识文本
             labelsContainer.innerHTML = '';
-            console.log('地图生成完成！路径宽度：', pathWidthSlider.value);
         }
 
-        // ====================== 新增：图片上传处理 ======================
         function handleTileImageUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
-
-            // 验证文件类型
             if (!file.type.match('image.*')) {
                 alert('请上传图片文件（PNG/JPG/JPEG）');
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = function(event) {
-                // 存储图片base64和文件信息
                 uploadedTileImage = file;
                 tileImageBase64 = event.target.result;
-
-                // 显示预览
                 tileImagePreview.src = tileImageBase64;
                 tileImagePreview.style.display = 'block';
-
-                // 提取文件名（用于TSX中的引用）
                 config.tileSetImageName = file.name;
-
                 alert('图块集图片上传成功！现在可以下载TSX文件了');
             };
             reader.readAsDataURL(file);
         }
 
-        // ====================== 导出功能 ======================
-        // 生成CSV格式的图层数据
         function generateLayerCSV(layerType) {
             let csv = '';
-            for (let y = 0; y < config.mapSize; y++) {
-                for (let x = 0; x < config.mapSize; x++) {
+            for (let y = 0; y < config.mapHeight; y++) {
+                for (let x = 0; x < config.mapWidth; x++) {
                     let value = 0;
-
                     switch(layerType) {
-                        case 'limit': // 策划限制区域
-                            value = mapData[y][x] === 3 ? 5 : 0; // 路径边缘黑色墙壁为5，其他为0
+                        case 'limit':
+                            value = mapData[y][x] === 3 ? 5 : 0;
                             break;
-                        case 'channel': // 通道层
-                            value = mapData[y][x] === 2 ? 7 : 0; // 通道为7，其他为0
+                        case 'channel':
+                            value = mapData[y][x] === 2 ? 7 : 0;
                             break;
-                        case 'earth': // 地面层
-                            value = mapData[y][x] === 1 ? 2 : 0; // 路径为2，其他为0
+                        case 'earth':
+                            value = mapData[y][x] === 1 ? 2 : 0;
                             break;
-                        case 'player': // 玩家层
+                        case 'player':
                             value = (playerSpawnPoint && x === playerSpawnPoint.x && y === playerSpawnPoint.y) ? 1 : 0;
                             break;
                     }
-
-                    csv += value + (x < config.mapSize - 1 ? ',' : '');
+                    csv += value + (x < config.mapWidth - 1 ? ',' : '');
                 }
-                csv += y < config.mapSize - 1 ? ',\n' : '';
+                csv += y < config.mapHeight - 1 ? ',\n' : '';
             }
             return csv;
         }
 
-        // 生成对象组XML
         function generateObjectGroupXML() {
             let xml = '';
-
-            // 玩家出生点（enterpoint）
             if (playerSpawnPoint) {
                 const x = playerSpawnPoint.x * config.tmxTileSize + config.tmxTileSize / 2;
                 const y = playerSpawnPoint.y * config.tmxTileSize + config.tmxTileSize / 2;
-
                 xml += ` <objectgroup color="#aaffff" id="2" name="enterpoint">\n`;
                 xml += `  <object id="2" name="enter_1" x="${x.toFixed(2)}" y="${y.toFixed(2)}">\n`;
                 xml += `   <properties>\n`;
@@ -898,15 +1034,12 @@
                 xml += `  </object>\n`;
                 xml += ` </objectgroup>\n`;
             }
-
-            // 怪物生成点（monsterpoint）
             if (monsterSpawnPoints.length > 0) {
                 xml += ` <objectgroup color="#ff00ff" id="5" name="monsterpoint">\n`;
                 monsterSpawnPoints.forEach((point, index) => {
-                    const id = 13 + index; // 从13开始，对应示例中的ID
+                    const id = 13 + index;
                     const x = point.x * config.tmxTileSize + config.tmxTileSize / 2;
                     const y = point.y * config.tmxTileSize + config.tmxTileSize / 2;
-
                     xml += `  <object id="${id}" name="monster_${index + 1}" x="${x.toFixed(2)}" y="${y.toFixed(2)}">\n`;
                     xml += `   <properties>\n`;
                     xml += `    <property name="id" type="int" value="${index + 1}"/>\n`;
@@ -916,64 +1049,48 @@
                 });
                 xml += ` </objectgroup>\n`;
             }
-
-            // 事件点（eventpoint）
             if (eventSpawnPoints.length > 0) {
                 xml += ` <objectgroup color="#ffff00" id="6" name="eventpoint">\n`;
                 eventSpawnPoints.forEach((point, index) => {
-                    const id = 5 + index; // 从5开始，对应示例中的ID
+                    const id = 5 + index;
                     const x = point.x * config.tmxTileSize + config.tmxTileSize / 2;
                     const y = point.y * config.tmxTileSize + config.tmxTileSize / 2;
-
-                    xml += `  <object id="${id}" name="event_${index + 2}" x="${x.toFixed(2)}" y="${y.toFixed(2)}">\n`;
+                    xml += `  <object id="${id}" name="event_${index + 1}" x="${x.toFixed(2)}" y="${y.toFixed(2)}">\n`;
                     xml += `   <properties>\n`;
-                    xml += `    <property name="id" type="int" value="${index + 2}"/>\n`;
+                    xml += `    <property name="id" type="int" value="${index + 1}"/>\n`;
                     xml += `   </properties>\n`;
                     xml += `   <point/>\n`;
                     xml += `  </object>\n`;
                 });
                 xml += ` </objectgroup>\n`;
             }
-
-            // dynamiclandscape 对象组
             xml += ` <objectgroup id="8" name="dynamiclandscape"/>\n`;
-
             return xml;
         }
 
-        // 生成基于自定义图片的TSX文件内容
         function generateTSXContent() {
-            // 如果上传了图片，使用上传的图片信息；否则使用默认配置
             const tileImageName = uploadedTileImage ? uploadedTileImage.name : config.tileSetImageName;
             const tileSize = config.tmxTileSize;
             const columns = config.tileSetColumns;
-
-            // 计算图片总尺寸（假设每个图块64x64，横向10个则宽度640，高度64）
             const imageWidth = tileSize * columns;
             const imageHeight = tileSize;
-
-            // 定义图块映射（根据你提供的颜色条对应）
             const tileDefinitions = [
-                {id: 0, type: "empty", color: "#FFFFFF"},          // 第1个图块：空白（白色）
-                {id: 1, type: "player_spawn", color: "#0000FF"},   // 第2个图块：玩家出生点（蓝色）
-                {id: 2, type: "earth", color: "#4CAF50"},          // 第3个图块：地面路径（绿色）
-                {id: 3, type: "normal_wall", color: "#666666"},    // 第4个图块：普通墙壁（灰色）
-                {id: 4, type: "path_wall", color: "#000000"},      // 第5个图块：路径墙壁（黑色）
-                {id: 5, type: "limit_area", color: "#000000"},     // 第6个图块：限制区域（黑色）
-                {id: 6, type: "monster_spawn", color: "#FF0000"},  // 第7个图块：怪物生成点（红色）
-                {id: 7, type: "channel", color: "#FF69B4"},        // 第8个图块：通道（粉色）
-                {id: 8, type: "event_spawn", color: "#FFFF00"},    // 第9个图块：事件点（黄色）
-                {id: 9, type: "reserved", color: "#9C27B0"}        // 第10个图块：预留（紫色）
+                {id: 0, type: "empty", color: "#FFFFFF"},
+                {id: 1, type: "player_spawn", color: "#0000FF"},
+                {id: 2, type: "earth", color: "#4CAF50"},
+                {id: 3, type: "normal_wall", color: "#666666"},
+                {id: 4, type: "path_wall", color: "#000000"},
+                {id: 5, type: "limit_area", color: "#000000"},
+                {id: 6, type: "monster_spawn", color: "#FF0000"},
+                {id: 7, type: "channel", color: "#FF69B4"},
+                {id: 8, type: "event_spawn", color: "#FFFF00"},
+                {id: 9, type: "reserved", color: "#9C27B0"}
             ];
-
-            // 构建TSX XML
             let tsxXML = `<?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.10" tiledversion="1.10.2" name="MaskTileSet" tilewidth="${tileSize}" tileheight="${tileSize}" tilecount="${columns}" columns="${columns}">
  <grid orientation="orthogonal" width="1" height="1"/>
  <image source="${tileImageName}" width="${imageWidth}" height="${imageHeight}"/>
 `;
-
-            // 添加每个图块的属性定义
             tileDefinitions.forEach(tile => {
                 tsxXML += ` <tile id="${tile.id}">\n`;
                 tsxXML += `  <properties>\n`;
@@ -982,13 +1099,10 @@
                 tsxXML += `  </properties>\n`;
                 tsxXML += ` </tile>\n`;
             });
-
             tsxXML += `</tileset>`;
-
             return tsxXML;
         }
 
-        // 下载文件通用函数
         function downloadFile(content, filename, contentType) {
             const blob = new Blob([content], { type: contentType });
             const url = URL.createObjectURL(blob);
@@ -1001,68 +1115,49 @@
             URL.revokeObjectURL(url);
         }
 
-        // 导出TMX文件
         function exportToTMX() {
-            // 验证是否有足够的数据
             if (monsterSpawnPoints.length === 0 && !playerSpawnPoint && eventSpawnPoints.length === 0) {
                 alert('请先生成怪物/玩家出生点和特殊事件点后再导出TMX文件！');
                 return;
             }
-
-            // 获取输出名称
             let outName = outputNameInput.value.trim();
             if (!outName) outName = 'dungeon_map';
-
-            // 构建TMX XML内容
             const tmxXML = `<?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="50" height="50" tilewidth="${config.tmxTileSize}" tileheight="${config.tmxTileSize}" infinite="0" nextlayerid="9" nextobjectid="23">
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="${config.mapWidth}" height="${config.mapHeight}" tilewidth="${config.tmxTileSize}" tileheight="${config.tmxTileSize}" infinite="0" nextlayerid="9" nextobjectid="23">
  <tileset firstgid="1" source="MaskTileSet.tsx"/>
  <tileset firstgid="9" source="../theme1_cemetery/MaskTileSet.tsx"/>
- <layer id="4" name="策划限制区域(没用)" width="50" height="50">
+ <layer id="4" name="策划限制区域(没用)" width="${config.mapWidth}" height="${config.mapHeight}">
   <data encoding="csv">
 ${generateLayerCSV('limit')}
 </data>
  </layer>
- <layer id="3" name="channel" width="50" height="50">
+ <layer id="3" name="channel" width="${config.mapWidth}" height="${config.mapHeight}">
   <data encoding="csv">
 ${generateLayerCSV('channel')}
 </data>
  </layer>
- <layer id="1" name="earth" width="50" height="50">
+ <layer id="1" name="earth" width="${config.mapWidth}" height="${config.mapHeight}">
   <data encoding="csv">
 ${generateLayerCSV('earth')}
 </data>
  </layer>
 ${generateObjectGroupXML()}
- <layer id="7" name="player" width="50" height="50">
+ <layer id="7" name="player" width="${config.mapWidth}" height="${config.mapHeight}">
   <data encoding="csv">
 ${generateLayerCSV('player')}
 </data>
  </layer>
 </map>`;
-
-            // 下载TMX文件
             downloadFile(tmxXML, `${outName}.tmx`, 'application/xml');
-
-            console.log('TMX文件导出成功！');
-            alert('TMX文件已成功导出！');
         }
 
-        // 下载TSX文件（基于自定义图片）
         function exportToTSX() {
-            // 如果没上传图片，提示用户
             if (!uploadedTileImage) {
                 alert('请先上传你的图块集图片！');
                 return;
             }
-
-            // 生成TSX内容
             const tsxContent = generateTSXContent();
-
-            // 同时下载TSX文件和原图（方便用户放到同一目录）
             downloadFile(tsxContent, 'MaskTileSet.tsx', 'application/xml');
-
-            // 额外下载上传的图块图片（保持原文件名）
             const imageBlob = dataURLtoBlob(tileImageBase64);
             const imageUrl = URL.createObjectURL(imageBlob);
             const a = document.createElement('a');
@@ -1072,12 +1167,8 @@ ${generateLayerCSV('player')}
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(imageUrl);
-
-            console.log('TSX文件和图块图片下载成功！');
-            alert('TSX文件和图块图片已成功下载！请将两个文件放在同一目录下使用。');
         }
 
-        // 辅助函数：将base64转换为Blob对象
         function dataURLtoBlob(dataURL) {
             const arr = dataURL.split(',');
             const mime = arr[0].match(/:(.*?);/)[1];
@@ -1090,7 +1181,6 @@ ${generateLayerCSV('player')}
             return new Blob([u8arr], {type:mime});
         }
 
-        // 初始生成地图
         generateMap();
 
         function updateEditUI() {
@@ -1105,7 +1195,6 @@ ${generateLayerCSV('player')}
             }
         }
 
-        // 将鼠标事件坐标转换成格子坐标（返回格子坐标和像素偏移）
         function getMouseGridPos(e) {
             const rect = canvas.getBoundingClientRect();
             const offsetX = e.clientX - rect.left;
@@ -1115,11 +1204,9 @@ ${generateLayerCSV('player')}
             return { x: gx, y: gy, offsetX, offsetY };
         }
 
-        // 鼠标交互：按下开始选择要拖动的点
         canvas.addEventListener('mousedown', (e) => {
             if (!editMode) return;
             const { x: gx, y: gy, offsetX, offsetY } = getMouseGridPos(e);
-            // 检查玩家点
             if (playerSpawnPoint) {
                 const px = playerSpawnPoint.x * config.cellSize + config.cellSize / 2;
                 const py = playerSpawnPoint.y * config.cellSize + config.cellSize / 2;
@@ -1129,7 +1216,6 @@ ${generateLayerCSV('player')}
                     return;
                 }
             }
-            // 检查怪物点
             for (let i = 0; i < monsterSpawnPoints.length; i++) {
                 const p = monsterSpawnPoints[i];
                 const px = p.x * config.cellSize + config.cellSize / 2;
@@ -1140,7 +1226,6 @@ ${generateLayerCSV('player')}
                     return;
                 }
             }
-            // 检查事件点
             for (let i = 0; i < eventSpawnPoints.length; i++) {
                 const p = eventSpawnPoints[i];
                 const px = p.x * config.cellSize + config.cellSize / 2;
@@ -1153,19 +1238,17 @@ ${generateLayerCSV('player')}
             }
         });
 
-        // 鼠标移动时更新被拖动点的位置（仅在编辑模式且存在拖动目标时）
         canvas.addEventListener('mousemove', (e) => {
             if (!dragging) return;
             const { x: gx, y: gy } = getMouseGridPos(e);
-            const cx = Math.max(0, Math.min(config.mapSize - 1, gx));
-            const cy = Math.max(0, Math.min(config.mapSize - 1, gy));
-            // 优先要求目标格为路径（mapData===1），若不是尝试邻近1格
+            const cx = Math.max(0, Math.min(config.mapWidth - 1, gx));
+            const cy = Math.max(0, Math.min(config.mapHeight - 1, gy));
             if (mapData[cy][cx] !== 1) {
                 let found = false;
                 const checks = [[0,0],[-1,0],[1,0],[0,-1],[0,1]];
                 for (const [dx, dy] of checks) {
                     const nx = cx + dx, ny = cy + dy;
-                    if (nx >=0 && nx < config.mapSize && ny >=0 && ny < config.mapSize && mapData[ny][nx] === 1) {
+                    if (nx >=0 && nx < config.mapWidth && ny >=0 && ny < config.mapHeight && mapData[ny][nx] === 1) {
                         if (dragging.type === 'player') playerSpawnPoint = { x: nx, y: ny };
                         else if (dragging.type === 'monster') monsterSpawnPoints[dragging.index] = { x: nx, y: ny };
                         else eventSpawnPoints[dragging.index] = { x: nx, y: ny };
@@ -1187,7 +1270,6 @@ ${generateLayerCSV('player')}
             if (dragging) dragging = null;
         });
 
-        // 页面加载时尝试从 localStorage 恢复保存的位置
         (function tryLoadSavedSpawns(){
             try {
                 const raw = localStorage.getItem('dungeon_spawns');
@@ -1198,7 +1280,6 @@ ${generateLayerCSV('player')}
                 if (Array.isArray(parsed.events)) eventSpawnPoints = parsed.events;
                 createAllLabels();
                 drawMap();
-                console.log('已从 localStorage 恢复生成点');
             } catch (e) {
                 console.error('恢复保存生成点失败', e);
             }
